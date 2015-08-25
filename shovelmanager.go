@@ -7,13 +7,18 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	rh "github.com/michaelklishin/rabbit-hole"
 )
 
-// CreateShovel creates the specified cluster on the clusterInfo
-// PUT /api/parameters/shovel/%2f/my-shovel
-func (clusterInfo ClusterInfo) CreateShovel(shovelName string, shovelDefinition ShovelDefinition) (res *http.Response, err error) {
+const autoShovelPrefix string = "autoshovel_"
+
+// CreateAutoShovel creates a dynamic shovel on specified cluster
+func (clusterInfo ClusterInfo) CreateAutoShovel(shovelDefinition ShovelDefinition) (res *http.Response, err error) {
+	return clusterInfo.createShovel(getAutoShovelName(shovelDefinition.SourceQueue), shovelDefinition)
+}
+func (clusterInfo ClusterInfo) createShovel(shovelName string, shovelDefinition ShovelDefinition) (res *http.Response, err error) {
 	log.Printf("Creating shovel %v for %v->%v", shovelName, shovelDefinition.SourceQueue, shovelDefinition.DestinationQueue)
 	parm := ShovelParameter{Value: shovelDefinition}
 	body, err := json.Marshal(parm)
@@ -32,6 +37,45 @@ func (clusterInfo ClusterInfo) CreateShovel(shovelName string, shovelDefinition 
 	}
 
 	return res, nil
+}
+func (clusterInfo ClusterInfo) DeleteShovel(shovelParameter ShovelParameter) error {
+	log.Printf("Deleting shovel %v", shovelParameter.Name)
+	req, err := clusterInfo.newRequestWithBody("DELETE", fmt.Sprintf("parameters/shovel/%v/%v", url.QueryEscape(clusterInfo.Vhost), url.QueryEscape(shovelParameter.Name)), nil)
+	if err != nil {
+		return err
+	}
+	_, err = executeRequest(req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (clusterInfo ClusterInfo) ListAutoShovels() ([]ShovelParameter, error) {
+	req, err := clusterInfo.newRequestWithBody("GET", "parameters/shovel/"+url.QueryEscape(clusterInfo.Vhost), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := executeRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	decoder := json.NewDecoder(resp.Body)
+	var shovels []ShovelParameter
+	err = decoder.Decode(&shovels)
+	if err != nil {
+		return nil, err
+	}
+	var autoshovels []ShovelParameter
+	for _, shovel := range shovels {
+		if strings.HasPrefix(shovel.Name, autoShovelPrefix) {
+			autoshovels = append(autoshovels, shovel)
+		}
+	}
+	return autoshovels, nil
+}
+func getAutoShovelName(queueName string) string {
+	return autoShovelPrefix + queueName
 }
 
 // AmqpURL gives the AMQP url for the cluster.
@@ -64,7 +108,6 @@ func (clusterInfo ClusterInfo) newRequestWithBody(method string, path string, bo
 
 	req, err := http.NewRequest(method, s, bytes.NewReader(body))
 	req.SetBasicAuth(clusterInfo.UserName, clusterInfo.Password)
-	// set Opaque to preserve percent-encoded path. MK.
 	req.URL.Opaque = clusterInfo.AdminURL() + "/api/" + path
 
 	req.Header.Add("Content-Type", "application/json")

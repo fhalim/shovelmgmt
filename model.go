@@ -13,6 +13,7 @@ type ShovelDefinition struct {
 
 type ShovelParameter struct {
 	Value ShovelDefinition `json:"value"`
+	Name  string           `json:"name,omitempty"`
 }
 
 type ClusterInfo struct {

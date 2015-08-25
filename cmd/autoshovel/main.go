@@ -27,7 +27,7 @@ func main() {
 	log.Println("Creating shovels in downstream cluster...")
 	for _, queue := range upstreamQueues {
 		shovelDefinition := shovelmgmt.ShovelDefinition{SourceUri: upstreamClusterInfo.AmqpURL(), SourceQueue: queue.Name, DestinationUri: downstreamClusterInfo.AmqpURL(), DestinationQueue: queue.Name}
-		_, err := downstreamClusterInfo.CreateShovel("autoshovel_"+queue.Name, shovelDefinition)
+		_, err := downstreamClusterInfo.CreateAutoShovel(shovelDefinition)
 		if err != nil {
 			log.Panic(err)
 		}
